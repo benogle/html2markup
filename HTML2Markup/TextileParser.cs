@@ -1,0 +1,440 @@
+﻿//Copyright (c) 2008 Ben Ogle
+
+//Permission is hereby granted, free of charge, to any person
+//obtaining a copy of this software and associated documentation
+//files (the "Software"), to deal in the Software without
+//restriction, including without limitation the rights to use,
+//copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the
+//Software is furnished to do so, subject to the following
+//conditions:
+
+//The above copyright notice and this permission notice shall be
+//included in all copies or substantial portions of the Software.
+
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+//EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+//OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+//NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+//HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+//WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+//FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+//OTHER DEALINGS IN THE SOFTWARE.
+
+
+using System.Collections.Generic;
+using System.Text;
+
+using Sgml;
+using System.Xml;
+using System.IO;
+using System.Text.RegularExpressions;
+using System;
+
+namespace HTML2Markup
+{
+
+    public class TextileParser : Parser
+    {
+        private ParserNode CurrentLink { get; set; }
+
+        private int _listDepth = 0;
+        private Stack<ListType> _inList = new Stack<ListType>();
+        private bool _inTable = false;
+
+        private static Regex NUMRE = new Regex("[0-9]+", RegexOptions.Compiled);
+        private static Regex GLYPH_NUMRE = new Regex("&#([0-9]+);", RegexOptions.Compiled);
+        private static Regex WIKI_LINK = new Regex("^/Project/(?<project>[a-zA-Z0-9_\\.,-]+)/Wiki/(?<page>[a-zA-Z0-9_~,\\.-]+)(?<anchor>#[a-zA-Z0-9_]+)?$", RegexOptions.Compiled);
+        private static Regex ISSUE_LINK = new Regex("^/(?<issue>bug|task)/(?<num>[0-9]+)$", RegexOptions.Compiled);
+
+        private static Dictionary<string, string> GLYPHS = new Dictionary<string,string>(){
+            {"&nbsp;", " "},
+            {"&amp;", "&"},
+            {"&ndash;", "-"}, {"&#8211;", "-"}, {"&mdash;", "--"}, {"&#8212;", "--"},
+            {"&quot;", "\""},   {"&apos;", "'"},   {"&#8217;", "'"},   {"&#8216;", "'"}, 
+            {"&lt;", "<"},      {"&gt;", ">"},
+            {"&copy;", "(C)"}, {"&#169;", "(C)"}, {"&reg;", "(R)"},  {"&#8482;", "(TM)"}
+        };
+
+        //http://www.w3schools.com/css/css_reference.asp
+        private static HashSet<string> STYLE_WHITELIST = new HashSet<string>(){
+            "background", "background-color", 
+            "border", "border-bottom", "border-top", "border-left", "border-right", 
+            "height", "width", 
+            "font", "font-family", "font-size", "font-style", "font-weight", 
+            "margin", "margin-bottom", "margin-top", "margin-left", "margin-right", 
+            "padding", "padding-left", "padding-top", "padding-bottom", "padding-top",
+            "color", "direction", 
+            "line-height", "text-align", "text-decoration", "text-indent", "text-transform"
+        };
+
+        public TextileParser()
+        {
+        }
+
+        #region Private 
+
+        private string ProcessCharCodeGlyph(Match m)
+        {
+            return Convert.ToChar(int.Parse(m.Groups[1].Value)).ToString();
+        }
+
+        /// <summary>
+        /// Extracts the style="" attribute from the element 
+        /// and properly formats the style for some element. 
+        /// Removes any properties that are not 'on the list' 
+        /// including any properties that use IE's expression.
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        private string GetStyleStr(ParserNode node)
+        {
+            string style = node.Attributes["style"];
+            string ret = "";
+            if (style != null)
+            {
+                List<string> str = new List<string>();
+                string[] split = style.Trim().Split(new char[1] { ';' });
+                foreach (string s in split)
+                {
+                    string trimmed = s.Trim();
+                    if (trimmed.Length > 0)
+                    {
+                        string[] elem = trimmed.Split(':');
+                        if (elem.Length == 2)
+                        {
+                            elem[0] = elem[0].Trim().ToLower();
+                            elem[1] = elem[1].Trim();
+                            if(!elem[1].ToLower().Contains("expression") && STYLE_WHITELIST.Contains(elem[0]))
+                                str.Add(elem[0] + ": " + elem[1]);
+                        }
+                    }
+                }
+
+                ret = "{" + string.Join(";", str.ToArray()) + "}";
+            }
+            return ret;
+        }
+
+        private string GetTextileHref(string href)
+        {
+            href = href.Trim();
+            return href;
+        }
+
+        private void AddQuickTag(ParserNode node, string repl, bool isStart)
+        {
+            if (isStart)
+            {
+                AddOutput(" ");
+                AddOutput(repl);
+                AddOutput(GetStyleStr(node));
+            }
+            else
+                AddOutput(repl + " ");
+        }
+
+        private void HandleQuickTags(ParserNode node, bool isStart)
+        {
+            switch (node.Name)
+            {
+                case "i":
+                case "em":
+                    AddQuickTag(node, "_", isStart);
+                    break;
+                case "b":
+                case "strong":
+                    AddQuickTag(node, "*", isStart);
+                    break;
+                case "s":
+                case "del":
+                case "strike":
+                    AddQuickTag(node, "-", isStart);
+                    break;
+                case "sub":
+                    AddQuickTag(node, "~", isStart);
+                    break;
+                case "sup":
+                    AddQuickTag(node, "^", isStart);
+                    break;
+                case "cite":
+                    AddQuickTag(node, "??", isStart);
+                    break;
+                case "span":
+                    AddQuickTag(node, "%", isStart);
+                    break;
+
+                case "code":
+                    ParserNode cnode;
+                    if (isStart)
+                    {
+                        cnode = node.PrevNode;
+                        //if the previous node is a pre tag, then we dont do the code quick tag.
+                        if (!(cnode != null && cnode.NodeType == XmlNodeType.Element && cnode.Name == "pre"))
+                            AddQuickTag(node, "@", isStart);
+                    }
+                    else
+                    {
+                        cnode = node.NextNode;
+                        //if the previous node is a pre tag, then we dont do the code quick tag.
+                        if (!(cnode != null && cnode.NodeType == XmlNodeType.EndElement && cnode.Name == "pre"))
+                            AddQuickTag(node, "@", isStart);
+                    }
+                    break;
+            }
+        }
+
+        private void AddBlockTag(ParserNode node, string tag, bool isStart)
+        {
+            if (isStart) AddOutput(tag + GetStyleStr(node) + ". ", 2, true);
+            else AddOutput(string.Format(".{0}", tag), 2, false);
+        }
+
+        #endregion
+
+        #region overrides
+
+        protected override string ProcessGlyphs(string s)
+        {
+            foreach (string k in GLYPHS.Keys)
+                s = s.Replace(k, GLYPHS[k]);
+
+            s = GLYPH_NUMRE.Replace(s, new MatchEvaluator(ProcessCharCodeGlyph));
+
+            return s;
+        }
+
+        protected override void ConvertStart()
+        {
+            _inList.Clear();
+            _listDepth = 0;
+            _inTable = false;
+            CurrentLink = null;
+        }
+
+        protected override void HandleElementStart(ParserNode node)
+        {
+            HandleQuickTags(node, true);
+
+            ParserNode next = node.NextNode;
+            ParserNode prev = node.PrevNode;
+
+            switch (node.Name)
+            {
+                case "p":
+                    if (node.Attributes["style"] == null)
+                        AddOutput("", 2, true);
+                    else
+                        AddBlockTag(node, "p", true);
+                    break;
+
+                case "h1":
+                case "h2":
+                case "h3":
+                case "h4":
+                case "h5":
+                case "h6":
+                case "h7":
+                    AddBlockTag(node, node.Name, true);
+                    break;
+
+                case "blockquote":
+                    AddBlockTag(node, "bq", true);
+                    break;
+
+                case "a":
+                    AddOutput(" ["); 
+                    //text node will be aded next, then on the end tag, 
+                    //we will output the href and all that.
+                    CurrentLink = CurrentNode;
+                    break;
+
+                case "img":
+                    string src = node.Attributes["src"];
+                    if(src != null)
+                        AddOutput(string.Format(" !{0}! ", src));
+                    break;
+
+                case "br":
+                    AddOutput("\n");
+                    break;
+
+                case "pre":
+
+                    //lookahead. If the next element is code, 
+                    //dont print the pre. .
+                    if (next != null &&
+                        next.NodeType == XmlNodeType.Element &&
+                        next.Name == "code")
+                    {
+                        break;
+                    }
+                    AddBlockTag(node, "pre", true);
+                    AddOutput("", 1, false);
+                    break;
+
+                case "code":
+                    if (prev != null &&
+                        prev.NodeType == XmlNodeType.Element &&
+                        prev.Name == "pre")
+                    {
+                        AddBlockTag(node, "bc", true);
+                        AddOutput("", 1, false);
+                    }
+                    break;
+
+
+                //lists!
+                case "ol":
+                    AddOutput("", _listDepth > 0 ? 1 : 2, true);
+                    _listDepth++;
+                    _inList.Push(ListType.Ordered);
+                    break;
+                case "ul":
+                    AddOutput("", _listDepth > 0 ? 1 : 2, true);
+                    _listDepth++;
+                    _inList.Push(ListType.Unordered);
+                    break;
+                case "li":
+
+                    //lookahead. If the next element is a nested list, 
+                    //dont print the list indicator.
+                    if (next != null &&
+                        next.NodeType == XmlNodeType.Element &&
+                        (next.Name == "ul" || next.Name == "ol"))
+                    {
+                        break;
+                    }
+
+                    if (_inList.Peek() == ListType.Ordered)
+                        AddOutput(RepeatStr("#", _listDepth) + " ", 1, true);
+                    else
+                        AddOutput(RepeatStr("*", _listDepth) + " ", 1, true);
+
+                    break;
+
+                //TABLES
+                case "table":
+                    AddOutput("", 2, true);
+                    _inTable = true;
+                    break;
+                case "td":
+                case "th":
+                    string pre = "";
+                    string colspan = node.Attributes["colspan"];
+                    string rowspan = node.Attributes["rowspan"];
+
+                    if (node.Name == "th")
+                        pre += "_";
+                    if (colspan != null && NUMRE.IsMatch(colspan))
+                        pre += "/" + colspan;
+                    if (rowspan != null && NUMRE.IsMatch(rowspan))
+                        pre += "\\" + rowspan;
+
+                    if (pre.Length > 0)
+                        pre += ". ";
+
+                    AddOutput("|" + pre);
+                    break;
+
+
+                default:
+                    break;
+            }
+
+        }
+
+        protected override void HandleElementEnd(ParserNode node)
+        {
+            HandleQuickTags(node, false);
+
+            ParserNode next = node.NextNode;
+            ParserNode prev = node.PrevNode;
+
+            switch (node.Name)
+            {
+                case "p":
+                case "h1":
+                case "h2":
+                case "h3":
+                case "h4":
+                case "h5":
+                case "h6":
+                case "h7":
+                    AddOutput("", 2, false);
+                    break;
+
+                case "blockquote":
+                    AddBlockTag(node, "bq", false);
+                    break;
+
+                case "a":
+                    if (CurrentLink.Attributes["title"] != null)
+                        AddOutput(" (" + CurrentLink.Attributes["title"] + ")");
+                    if (CurrentLink != null && CurrentLink.Attributes.ContainsKey("href"))
+                        AddOutput("|" + GetTextileHref(CurrentLink.Attributes["href"]) + "] ");
+                    CurrentLink = null;
+                    break;
+
+                case "pre":
+                    //if the previous element is a code element, we dont do the end...
+                    if (prev != null &&
+                        prev.NodeType == XmlNodeType.EndElement &&
+                        prev.Name == "code")
+                    {
+                        break;
+                    }
+
+                    AddOutput("", 1, false);
+                    AddBlockTag(node, "pre", false);
+                    break;
+
+                case "code":
+                    if (next != null &&
+                        next.NodeType == XmlNodeType.EndElement &&
+                        next.Name == "pre")
+                    {
+                        AddOutput("", 1, false);
+                        AddBlockTag(node, "bc", false);
+                    }
+                    break;
+
+                //lists
+                case "ol":
+                    _listDepth--;
+                    _inList.Pop();
+                    AddOutput("", _listDepth > 0 ? 1 : 2, false);
+                    break;
+                case "ul":
+                    _listDepth--;
+                    _inList.Pop();
+                    AddOutput("", _listDepth > 0 ? 1 : 2, false);
+                    break;
+                case "li":
+                    AddOutput("", 1, false);
+                    break;
+
+                //tables
+                case "table":
+                    AddOutput("", 2, false);
+                    _inTable = false;
+                    break;
+                case "tr":
+                    AddOutput("|", 1, false);
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        protected override void HandleText(ParserNode node)
+        {
+            string output = node.Value;
+
+            AddOutput(output.Trim());
+        }
+
+        #endregion
+    }
+}

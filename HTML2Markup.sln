@@ -1,0 +1,31 @@
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HTML2Markup", "HTML2Markup\HTML2Markup.csproj", "{5C1BB530-226E-4EEF-9BF7-7CDB14AC85A6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HTML2Markup.Test", "HTML2Markup.Test\HTML2Markup.Test.csproj", "{42E421AA-479E-41AF-A0E6-2CE9ADF37FE9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SgmlReaderDll8", "SGMLReader\SgmlReaderDll8.csproj", "{499527FF-AE52-450F-B3E3-4AD53E1712AD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5C1BB530-226E-4EEF-9BF7-7CDB14AC85A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5C1BB530-226E-4EEF-9BF7-7CDB14AC85A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5C1BB530-226E-4EEF-9BF7-7CDB14AC85A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5C1BB530-226E-4EEF-9BF7-7CDB14AC85A6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{42E421AA-479E-41AF-A0E6-2CE9ADF37FE9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{42E421AA-479E-41AF-A0E6-2CE9ADF37FE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{42E421AA-479E-41AF-A0E6-2CE9ADF37FE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{42E421AA-479E-41AF-A0E6-2CE9ADF37FE9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{499527FF-AE52-450F-B3E3-4AD53E1712AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{499527FF-AE52-450F-B3E3-4AD53E1712AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{499527FF-AE52-450F-B3E3-4AD53E1712AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{499527FF-AE52-450F-B3E3-4AD53E1712AD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
