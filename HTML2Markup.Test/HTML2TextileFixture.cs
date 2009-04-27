@@ -54,7 +54,7 @@ namespace HTML2Markup.Test
         #region paragraphs
 
         [Test]
-        public void PNoStyle()
+        public void P_NoStyle()
         {
             string s = @"<p>my text</p><p>Yeah it is</p><p>woot</p>";
             string t = ParseHTML(s);
@@ -63,7 +63,7 @@ namespace HTML2Markup.Test
         }
 
         [Test]
-        public void PStyle()
+        public void P_Style()
         {
             string s = "<p >my text</p><p style=\"text-align: center;\">Yeah it is</p><p>woot</p>";
             string t = ParseHTML(s);
@@ -72,7 +72,7 @@ namespace HTML2Markup.Test
         }
 
         [Test]
-        public void PMultiStyle()
+        public void P_MultiStyle()
         {
             string s = "<p >my text</p><p style=\"text-align: center; color: red;\">Yeah it is</p><p>woot</p>";
             string t = ParseHTML(s);
@@ -87,6 +87,15 @@ namespace HTML2Markup.Test
             string t = ParseHTML(s);
 
             Assert.AreEqual("my text\n\nRandom text\n\nwoot\n\n", t);
+        }
+
+        [Test]
+        public void P_class()
+        {
+            string s = "<p class=\"wowza\">my text</p>Random text<p>woot</p>";
+            string t = ParseHTML(s);
+
+            Assert.AreEqual("p(wowza). my text\n\nRandom text\n\nwoot\n\n", t);
         }
 
         #endregion
@@ -121,7 +130,7 @@ namespace HTML2Markup.Test
             string s = "some text <pre>hey this is my pre</pre> more text";
             string t = ParseHTML(s);
 
-            Assert.AreEqual("some text\n\npre. \nhey this is my pre\n.pre\n\nmore text", t);
+            Assert.AreEqual("some text\n\npre.. hey this is my pre\n\np. more text", t);
         }
 
         [Test]
@@ -130,16 +139,34 @@ namespace HTML2Markup.Test
             string s = "some text <pre>hey\n\nthis\nis\nmy\n\n\npre</pre> more text";
             string t = ParseHTML(s);
 
-            Assert.AreEqual("some text\n\npre. \nhey\n\nthis\nis\nmy\n\n\npre\n.pre\n\nmore text", t);
+            Assert.AreEqual("some text\n\npre.. hey\n\nthis\nis\nmy\n\n\npre\n\np. more text", t);
+        }
+
+        [Test]
+        public void PRE_class()
+        {
+            string s = "some text <pre class=\"prettyprint\">hey\n\nthis\nis\nmy\n\n\npre</pre> more text";
+            string t = ParseHTML(s);
+
+            Assert.AreEqual("some text\n\npre(prettyprint).. hey\n\nthis\nis\nmy\n\n\npre\n\np. more text", t);
         }
 
         [Test]
         public void PRECODE_simple()
         {
-            string s = "some text <pre>  <code>hey this is my code</code> </pre> more text";
+            string s = "some text <pre>  <code>hey this is my code\nyeah man</code> </pre> more text";
             string t = ParseHTML(s);
 
-            Assert.AreEqual("some text\n\nbc. \nhey this is my code\n.bc\n\nmore text", t);
+            Assert.AreEqual("some text\n\nbc.. hey this is my code\nyeah man\n\np. more text", t);
+        }
+
+        [Test]
+        public void PRECODE_header()
+        {
+            string s = "some text <pre>  <code>hey this is my code\nyeah man</code> </pre> <h2>header</h2> more text";
+            string t = ParseHTML(s);
+
+            Assert.AreEqual("some text\n\nbc.. hey this is my code\nyeah man\n\nh2. header\n\nmore text", t);
         }
 
         [Test]
@@ -209,68 +236,72 @@ namespace HTML2Markup.Test
         #region links
 
         [Test]
-        public void LINK_wikiInternal()
+        public void LINK_basic()
         {
             string s = "text! and <a href=\"/Project/something/Wiki/Wowza\">a link</a> ok!!";
             string t = ParseHTML(s);
 
-            Assert.AreEqual("text! and [a link|something:Wowza] ok!!", t);
+            Assert.AreEqual("text! and \"a link\":/Project/something/Wiki/Wowza ok!!", t);
         }
 
         [Test]
-        public void LINK_bug()
-        {
-            string s = "text! and <a href=\"/bUg/1\">a link</a> ok!!";
-            string t = ParseHTML(s);
-
-            Assert.AreEqual("text! and [a link|bug 1] ok!!", t);
-        }
-
-        [Test]
-        public void LINK_task()
-        {
-            string s = "text! and <a href=\"/tAsk/1\">a link</a> ok!!";
-            string t = ParseHTML(s);
-
-            Assert.AreEqual("text! and [a link|task 1] ok!!", t);
-        }
-
-        [Test]
-        public void LINK_external()
-        {
-            string s = "text! and <a href=\"/issue/1\">a link</a> ok!!";
-            string t = ParseHTML(s);
-
-            Assert.AreEqual("text! and [a link|/issue/1] ok!!", t);
-        }
-
-        [Test]
-        public void LINK_externalWiki()
-        {
-            string s = "text! and <a href=\"http://something.com/Project/something/Wiki/Wowza\">a link</a> ok!!";
-            string t = ParseHTML(s);
-
-            Assert.AreEqual("text! and [a link|http://something.com/Project/something/Wiki/Wowza] ok!!", t);
-        }
-
-        [Test]
-        public void LINK_externalWikiTitle()
+        public void LINK_title()
         {
             string s = "text! and <a title=\"title\" href=\"http://something.com/Project/something/Wiki/Wowza\">a link</a> ok!!";
             string t = ParseHTML(s);
 
-            Assert.AreEqual("text! and [a link (title)|http://something.com/Project/something/Wiki/Wowza] ok!!", t);
+            Assert.AreEqual("text! and \"a link(title)\":http://something.com/Project/something/Wiki/Wowza ok!!", t);
         }
 
         [Test]
-        public void LINK_wikiInternalTitle()
+        public void LINK_class()
         {
-            string s = "text! and <a title=\"title!\" href=\"/Project/something/Wiki/Wowza\">a link</a> ok!!";
+            string s = "text! and <a class=\"something\" href=\"http://something.com/Project/something/Wiki/Wowza\">a link</a> ok!!";
             string t = ParseHTML(s);
 
-            Assert.AreEqual("text! and [a link (title!)|something:Wowza] ok!!", t);
+            Assert.AreEqual("text! and \"(something)a link\":http://something.com/Project/something/Wiki/Wowza ok!!", t);
         }
 
+        [Test]
+        public void LINK_style()
+        {
+            string s = "text! and <a style=\"background:#0f0; color:#00c;\" title=\"my title\" href=\"http://something.com/Project/something/Wiki/Wowza\">a link</a> ok!!";
+            string t = ParseHTML(s);
+
+            Assert.AreEqual("text! and \"{background: #0f0;color: #00c}a link(my title)\":http://something.com/Project/something/Wiki/Wowza ok!!", t);
+        }
+
+
+        #endregion
+
+        #region images
+
+        [Test]
+        public void IMAGE_basic()
+        {
+            string s = "text! and <img src=\"/meow/omg.jpg\" /> ok!!";
+            string t = ParseHTML(s);
+
+            Assert.AreEqual("text! and !/meow/omg.jpg! ok!!", t);
+        }
+
+        [Test]
+        public void IMAGE_class()
+        {
+            string s = "text! and <img class=\"mycl\" style=\"color:#fff;\" src=\"/meow/omg.jpg\" /> ok!!";
+            string t = ParseHTML(s);
+
+            Assert.AreEqual("text! and !(mycl)/meow/omg.jpg! ok!!", t);
+        }
+
+        [Test]
+        public void IMAGE_style()
+        {
+            string s = "text! and <img style=\"color:#fff;\" src=\"/meow/omg.jpg\" /> ok!!";
+            string t = ParseHTML(s);
+
+            Assert.AreEqual("text! and !{color: #fff}/meow/omg.jpg! ok!!", t);
+        }
 
         #endregion
     }

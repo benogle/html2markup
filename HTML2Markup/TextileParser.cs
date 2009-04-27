@@ -42,10 +42,11 @@ namespace HTML2Markup
         private Stack<ListType> _inList = new Stack<ListType>();
         private bool _inTable = false;
 
+        private bool _inExtendedBlock = false;
+        private bool _exitExtendedBlock = false;
+
         private static Regex NUMRE = new Regex("[0-9]+", RegexOptions.Compiled);
         private static Regex GLYPH_NUMRE = new Regex("&#([0-9]+);", RegexOptions.Compiled);
-        private static Regex WIKI_LINK = new Regex("^/Project/(?<project>[a-zA-Z0-9_\\.,-]+)/Wiki/(?<page>[a-zA-Z0-9_~,\\.-]+)(?<anchor>#[a-zA-Z0-9_]+)?$", RegexOptions.Compiled);
-        private static Regex ISSUE_LINK = new Regex("^/(?<issue>bug|task)/(?<num>[0-9]+)$", RegexOptions.Compiled);
 
         private static Dictionary<string, string> GLYPHS = new Dictionary<string,string>(){
             {"&nbsp;", " "},
@@ -113,6 +114,25 @@ namespace HTML2Markup
 
                 ret = "{" + string.Join(";", str.ToArray()) + "}";
             }
+            return ret;
+        }
+
+        private string GetClassStr(ParserNode node)
+        {
+            string cl = node.Attributes["class"];
+            string ret = "";
+            if (cl != null)
+            {
+                ret = String.Format("({0})", cl);
+            }
+            return ret;
+        }
+
+        private string GetStyleOrClassStr(ParserNode node)
+        {
+            string ret = GetClassStr(node);
+            if (ret.Length < 1)
+                ret = GetStyleStr(node);
             return ret;
         }
 
@@ -186,8 +206,26 @@ namespace HTML2Markup
 
         private void AddBlockTag(ParserNode node, string tag, bool isStart)
         {
-            if (isStart) AddOutput(tag + GetStyleStr(node) + ". ", 2, true);
-            else AddOutput(string.Format(".{0}", tag), 2, false);
+            _exitExtendedBlock = false;
+
+            if (isStart) AddOutput(tag + GetStyleOrClassStr(node) + ". ", 2, true);
+            else AddOutput("", 2, false);
+        }
+
+        private void AddExtendedBlockTag(ParserNode node, string tag, bool isStart)
+        {
+            if (isStart)
+            {
+                _inExtendedBlock = true;
+                _exitExtendedBlock = false;
+                AddOutput(tag + GetStyleOrClassStr(node) + ".. ", 2, true);
+            }
+            else
+            {
+                _inExtendedBlock = false;
+                _exitExtendedBlock = true;
+                AddOutput("", 2, false);
+            }
         }
 
         #endregion
@@ -222,10 +260,11 @@ namespace HTML2Markup
             switch (node.Name)
             {
                 case "p":
-                    if (node.Attributes["style"] == null)
-                        AddOutput("", 2, true);
+                    if (node.Attributes["style"] != null || node.Attributes["class"] != null || _exitExtendedBlock)
+                        AddBlockTag(node, "p", true);    
                     else
-                        AddBlockTag(node, "p", true);
+                        AddOutput("", 2, true);
+                    
                     break;
 
                 case "h1":
@@ -243,7 +282,8 @@ namespace HTML2Markup
                     break;
 
                 case "a":
-                    AddOutput(" ["); 
+                    AddOutput(" \"");
+                    AddOutput(GetStyleOrClassStr(CurrentNode));
                     //text node will be aded next, then on the end tag, 
                     //we will output the href and all that.
                     CurrentLink = CurrentNode;
@@ -252,7 +292,7 @@ namespace HTML2Markup
                 case "img":
                     string src = node.Attributes["src"];
                     if(src != null)
-                        AddOutput(string.Format(" !{0}! ", src));
+                        AddOutput(string.Format(" !{0}{1}! ", GetStyleOrClassStr(CurrentNode), src));
                     break;
 
                 case "br":
@@ -269,8 +309,7 @@ namespace HTML2Markup
                     {
                         break;
                     }
-                    AddBlockTag(node, "pre", true);
-                    AddOutput("", 1, false);
+                    AddExtendedBlockTag(node, "pre", true);
                     break;
 
                 case "code":
@@ -278,8 +317,7 @@ namespace HTML2Markup
                         prev.NodeType == XmlNodeType.Element &&
                         prev.Name == "pre")
                     {
-                        AddBlockTag(node, "bc", true);
-                        AddOutput("", 1, false);
+                        AddExtendedBlockTag(node, "bc", true);
                     }
                     break;
 
@@ -370,9 +408,12 @@ namespace HTML2Markup
 
                 case "a":
                     if (CurrentLink.Attributes["title"] != null)
-                        AddOutput(" (" + CurrentLink.Attributes["title"] + ")");
+                        AddOutput("(" + CurrentLink.Attributes["title"] + ")");
+
+                    AddOutput("\"");
+
                     if (CurrentLink != null && CurrentLink.Attributes.ContainsKey("href"))
-                        AddOutput("|" + GetTextileHref(CurrentLink.Attributes["href"]) + "] ");
+                        AddOutput(":" + GetTextileHref(CurrentLink.Attributes["href"]) + " ");
                     CurrentLink = null;
                     break;
 
@@ -386,7 +427,7 @@ namespace HTML2Markup
                     }
 
                     AddOutput("", 1, false);
-                    AddBlockTag(node, "pre", false);
+                    AddExtendedBlockTag(node, "pre", false);
                     break;
 
                 case "code":
@@ -395,7 +436,7 @@ namespace HTML2Markup
                         next.Name == "pre")
                     {
                         AddOutput("", 1, false);
-                        AddBlockTag(node, "bc", false);
+                        AddExtendedBlockTag(node, "bc", false);
                     }
                     break;
 
@@ -430,6 +471,14 @@ namespace HTML2Markup
 
         protected override void HandleText(ParserNode node)
         {
+            //special case: if extended block ends and just text is the next element,
+            //we will use a paragraph tag.
+            if (_exitExtendedBlock)
+            {
+                AddOutput("p. ", 2, true);
+                _exitExtendedBlock = false;
+            }
+
             string output = node.Value;
 
             AddOutput(output.Trim());
